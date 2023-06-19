@@ -1,0 +1,310 @@
+﻿@model WeatherViewModel
+
+<h2>Weather Information</h2>
+
+<div class="chart-container">
+    <canvas id="temperatureChart"></canvas>
+</div>
+
+<div class="chart-container">
+    <canvas id="windSpeedChart"></canvas>
+</div>
+
+<div id="popup" class="popup">
+    <div id="popup-content" class="popup-content">
+        <h3 id="popup-title" class="popup-title"></h3>
+        <canvas id="popup-chart"></canvas>
+    </div>
+</div>
+
+
+@section Scripts {
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/5.0.12/signalr.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.1/moment.min.js"></script>
+
+
+    <script>
+        var latestWeatherData = @Html.Raw(Json.Serialize(Model.LatestWeatherData));
+
+        console.log(latestWeatherData);
+
+        var temperatureChartElement = document.getElementById('temperatureChart');
+        var windSpeedChartElement = document.getElementById('windSpeedChart');
+
+        var temperatureChart = new Chart(temperatureChartElement, {
+            type: 'bar',
+            data: {
+                labels: latestWeatherData.map(data => `${data.city}, ${data.country}`),
+                datasets: [{
+                    label: 'Min Temperature',
+                    data: latestWeatherData.map(data => data.temperature),
+                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                var data = context.parsed;
+                                return `${latestWeatherData[context.dataIndex].temperature}°C - Last Update: ${latestWeatherData[context.dataIndex].lastUpdate}`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        var windSpeedChart = new Chart(windSpeedChartElement, {
+            type: 'bar',
+            data: {
+                labels: latestWeatherData.map(data => `${data.city}, ${data.country}`),
+                datasets: [{
+                    label: 'Highest Wind Speed',
+                    data: latestWeatherData.map(data => data.windSpeed),
+                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                var data = context.parsed;
+                                return `${latestWeatherData[context.dataIndex].windSpeed} m/s - Last Update: ${latestWeatherData[context.dataIndex].lastUpdate}`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // Connect the client to WeatherHub
+        var connection = new signalR.HubConnectionBuilder().withUrl('/weatherHub').build();
+
+        // Receive updated weather data from server
+        connection.on('ReceivedWeatherUpdate', function (latestWeatherData) {
+            // Update graphs with the new data
+            updateCharts(latestWeatherData);
+        });
+
+        // Start connection to SignalR server
+        connection.start()
+            .then(function () {
+                console.log('Connessione a SignalR stabilita.');
+            })
+            .catch(function (err) {
+                console.error('Errore durante la connessione a SignalR: ' + err);
+            });
+
+        function updateCharts(newData) {
+            // Recreate graphs with the new data
+            temperatureChart.destroy();
+            windSpeedChart.destroy();
+
+            temperatureChart = new Chart(temperatureChartElement, {
+                type: 'bar',
+                data: {
+                    labels: newData.map(data => `${data.city}, ${data.country}`),
+                    datasets: [{
+                        label: 'Min Temperature',
+                        data: newData.map(data => data.temperature),
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function (context) {
+                                    var data = context.parsed;
+                                    return `${newData[context.dataIndex].temperature}°C - Last Update: ${newData[context.dataIndex].lastUpdate}`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            windSpeedChart = new Chart(windSpeedChartElement, {
+                type: 'bar',
+                data: {
+                    labels: newData.map(data => `${data.city}, ${data.country}`),
+                    datasets: [{
+                        label: 'Highest Wind Speed',
+                        data: newData.map(data => data.windSpeed),
+                        backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                        borderColor: 'rgba(255, 99, 132, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function (context) {
+                                    var data = context.parsed;
+                                    return `${newData[context.dataIndex].windSpeed} m/s - Last Update: ${newData[context.dataIndex].lastUpdate}`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Event handler for temp graph
+        temperatureChartElement.onclick = function (event) {
+            var clickedPoints = temperatureChart.getElementsAtEventForMode(event, 'nearest', { intersect: true }, true);
+            if (clickedPoints.length > 0) {
+                var clickedIndex = clickedPoints[0].index;
+                var city = latestWeatherData[clickedIndex].city;
+                var country = latestWeatherData[clickedIndex].country;
+
+                // Fetch the data for the last 2 hours for the selected city
+                fetch(`/weather/historical?city=${city}&country=${country}`)
+                    .then(response => response.json())
+                    .then(historicalData => {
+                        openTemperaturePopup(city, country, historicalData);
+                    })
+                    .catch(error => {
+                        console.error('Errore durante il recupero dei dati storici:', error);
+                    });
+            }
+        };
+
+        // Event handler for wind speed graph
+        windSpeedChartElement.onclick = function (event) {
+            var clickedPoints = windSpeedChart.getElementsAtEventForMode(event, 'nearest', { intersect: true }, true);
+            if (clickedPoints.length > 0) {
+                var clickedIndex = clickedPoints[0].index;
+                var city = latestWeatherData[clickedIndex].city;
+                var country = latestWeatherData[clickedIndex].country;
+
+                // Fetch the data for the last 2 hours for the selected city
+                fetch(`/weather/historical?city=${city}&country=${country}`)
+                    .then(response => response.json())
+                    .then(historicalData => {
+                        openWindSpeedPopup(city, country, historicalData);
+                    })
+                    .catch(error => {
+                        console.error('Errore durante il recupero dei dati storici:', error);
+                    });
+            }
+        };
+
+        // Function to open trend popup for wind speed
+        function openWindSpeedPopup(city, country, historicalData) {
+            var popup = document.getElementById('popup');
+            var popupTitle = document.getElementById('popup-title');
+            var popupChartElement = document.getElementById('popup-chart');
+
+            // Update the title for the popup with the name of the city and country
+            popupTitle.textContent = `${city}, ${country}`;
+
+            // Create graph for the wind speed in the popup
+            var popupChart = new Chart(popupChartElement, {
+                type: 'line',
+                data: {
+                    labels: historicalData.map(data => moment(data.lastUpdate).format('YYYY-MM-DD HH:mm')),
+                    datasets: [{
+                        label: 'Wind Speed',
+                        data: historicalData.map(data => data.windSpeed),
+                        backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                        borderColor: 'rgba(255, 99, 132, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+
+            // Shot the popup
+            popup.style.display = 'flex';
+        }
+
+        // Function to open trend popup for temperature
+        function openTemperaturePopup(city, country, historicalData) {
+            var popup = document.getElementById('popup');
+            var popupTitle = document.getElementById('popup-title');
+            var popupChartElement = document.getElementById('popup-chart');
+
+            // Update the title for the popup with the name of the city and country
+            popupTitle.textContent = `${city}, ${country}`;
+
+            // Create graph for the temperature in the popup
+            var popupChart = new Chart(popupChartElement, {
+                type: 'line',
+                data: {
+                    labels: historicalData.map(data => moment(data.lastUpdate).format('YYYY-MM-DD HH:mm')),
+                    datasets: [{
+                        label: 'Temperature',
+                        data: historicalData.map(data => data.temperature),
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+
+            // Show the popup
+            popup.style.display = 'flex';
+        }
+
+        // Event handler for closing popup
+        popup.onclick = function (event) {
+            var popup = document.getElementById('popup');
+            var popupChartElement = document.getElementById('popup-chart');
+
+            // Close the popup
+            popup.style.display = 'none';
+
+            // Destroy the graph in the popup
+            var popupChart = Chart.getChart(popupChartElement);
+            if (popupChart) {
+                popupChart.destroy();
+            }
+        };
+
+    </script>
+}
